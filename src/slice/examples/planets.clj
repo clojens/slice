@@ -1,7 +1,9 @@
 (ns slice.examples.planets
-  (:use compojure.core
-        [slice core library compojure5]
-        ring.util.serve))
+  (:use [compojure.core]
+        [slice.core]
+        [slice.library]
+        [slice.compojure5]
+        [ring.util.serve]))
 
 (defonce planets [["Mercury" []]
                   ["Venus" []]
