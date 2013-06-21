@@ -1,9 +1,12 @@
 (ns slice.examples.planets
   (:use [compojure.core]
         [slice.core]
+        ;[clojure.contrib.ns-utils]
         [slice.library]
         [slice.compojure5]
-        [ring.util.serve]))
+        [hiccup.page :as page]
+        [ring.util.server]))
+
 
 (defonce planets [["Mercury" []]
                   ["Venus" []]

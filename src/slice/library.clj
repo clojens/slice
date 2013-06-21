@@ -1,11 +1,11 @@
 (ns slice.library
   (:use slice.core
-        [hiccup.page-helpers :as ph]))
+        [hiccup.page :as ph]))
 
 (slice menu
   [links & {:as opts :keys [align id class]}]
   (let [class (or class "menu")]
-    (slices (html (ph/unordered-list {:id id :class class} links))
+    (slices (html (:ul {:id id :class class} links))
             (css
              [(wdot class)
               :list-style :none

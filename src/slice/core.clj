@@ -1,25 +1,46 @@
 (ns slice.core
-  (:use [clojure.contrib.ns-utils :only (immigrate)]
-        [clojure.contrib.def :only (defn-memo defalias)])
-  (:require [clojure.walk])
-  (:require [hiccup.core :as hiccup]
-            [hiccup.page-helpers :as page-helpers]
+  (:use [clojure.contrib.def :only (defn-memo defalias)])
+  (:require [clojure.walk]
+            [hiccup.core :as hiccup]
+            [hiccup.page :as page-helpers]
             [com.reasonr.scriptjure :as scriptjure]
             [gaka.core :as gaka]
             [uteal.core :as uteal]))
 
-(def *slice-memoize* false)
 
-(defn slice-memoize! [b]
-  (alter-var-root #'*slice-memoize* (constantly b)))
+(defn-memo foo [x] (+ 1 x))
 
-(defn var-meta [f]
-  (let [mf (meta f)]
-    (meta (ns-resolve (:ns mf) (:name mf)))))
+;;
+;; Dynamically bindable variables
+;;
+
+(def ^:dynamic *slice-memoize* false)
+
+;;
+;; Immutable variables
+;;
+
+(def empty-slice-coll (seq [""]))
+
+;;
+;; Strutures
+;;
 
 (defrecord Slice [])
 
-(defn slice? [x]
+
+
+(defn var-meta
+  "Resolve Var meta-data."
+  [f]
+  (let [mf (meta f)]
+    (meta (ns-resolve (:ns mf) (:name mf)))))
+
+
+
+(defn slice?
+  "Predicate function to return true if the input x is a slice."
+  [x]
   (or (instance? slice.core.Slice x)
       (and (fn? x) (:slice (var-meta x)))))
 
@@ -49,23 +70,61 @@
           (or (apply merge-with concat-or (map to-slice maps)) (Slice.))
           [:html :top :title :head :css :js :dom]))
 
-(defn- javascript-tag [s]
-  [:script {:type "text/javascript"} (str "//<![CDATA[\n" s "\n//]]>")])
 
-(defn- css-tag [s]
+;;
+;; Character data wrapping
+;;
+
+(defn- javascript-tag
+  "Use CDATA markers around the text of inline <script> elements. This
+  technique is only necessary when using inline scripts and stylesheets,
+  and is language-specific, thus escaped for JavaScript."
+  [s]
+  [:script {:type "text/javascript"}
+   (str "//<![CDATA[\n" s "\n//]]>")])
+
+(defn- css-tag
+  "Use CDATA markers around the text of inline <style> elements. This
+  technique is only necessary when using inline scripts and stylesheets,
+  and is language-specific, thus escaped for Cascading Style Sheets."
+  [s]
   [:style {:type "text/css"}
    (str "/*<![CDATA[*/\n" s "\n/*]]>*/")])
 
-(defmacro just-html [& body] `(hiccup/html ~@body))
+;;
+;; Non-side-effect-free functions
+;;
 
-(defmacro just-js [& body] `(scriptjure/js ~@body))
+(defn slice-memoize!
+  "Memoize a slice. This function has side-effects hence the exclamation."
+  [b]
+  (alter-var-root #'*slice-memoize* (constantly b)))
 
-(defmacro just-css [& body] `(gaka/css ~@body))
-(defalias htmlx just-html)
-(defalias jsx just-js)
-(defalias cssx just-css)
 
-(def empty-slice-coll (seq [""]))
+
+;;
+;; Macros
+;;
+
+(defmacro just-html
+  "This convenience macro wraps Hiccup rendering functionality."
+  [& body] `(hiccup/html ~@body))
+
+(defmacro just-js
+  "This convenience macro wraps Scriptjure rendering functionality."
+  [& body] `(scriptjure/js ~@body))
+
+(defmacro just-css
+  "This convenience macro wraps gaka rendering functionality."
+  [& body] `(gaka/css ~@body))
+
+
+;; Deprecated
+
+;(defalias htmlx just-html)
+;(defalias jsx just-js)
+;(defalias cssx just-css)
+
 
 (defmacro js* [& body] `(scriptjure/js* ~@body))
 
@@ -89,6 +148,7 @@
 
 (defn simple-html [body]
   (assoc (Slice.) :html (seq [(hiccup/html body)])))
+
 
 (defn walk-html
   "walk the hiccup datastructure, pulling out slices"
@@ -115,6 +175,8 @@
   should return a map"
   [name & body]
   {:pre [(symbol? name)]}
+
+  ;; lexical local binding context
   (let [[docstring body] (if (string? (first body))
                            [(first body) (rest body)]
                            ["" body])
@@ -130,6 +192,7 @@
                                             :else nil))
                                body))
                     (:impure (meta name)))]
+    ;; body
     (if *slice-memoize*
       (if impure?
         `(let [var# (defn ~name ~docstring ~args (slices ~@body))]
@@ -141,26 +204,45 @@
           `(let [var# (defn-memo ~name ~docstring ~args (slices ~@body))]
              (alter-meta! var# assoc :slice true)
              var#)))
-      `(defn ~name ~docstring (~args (slices ~@body))
-         {:slice true}))))
+      `(defn ~name ~docstring (~args (slices ~@body))))))
 
-(defn-memo render-int
+
+
+#_(defn-memo render-int
   [sl]
   (let [{:keys [title html top css js dom head doctype]} sl]
     (hiccup/html
      (when doctype
        doctype)
-     [:html (when-let [manifest (:manifest sl)] {:manifest manifest})
-      (when (or (seq title) (seq head))
-        [:head (when (seq title) [:title (apply str (interpose " - " title))])
-         (when (seq head) (apply #(hiccup/html %&) head))])
+     [:html
+      (when-let
+        [manifest (:manifest sl)] {:manifest manifest})
+
+      (when
+        (or (seq title) (seq head)))
+
+      [:head (when (seq title) [:title (apply str (interpose " - " title))]
+
+               (when (seq head) (apply #(hiccup/html %&) head)))]
+
       [:body
-       (when (seq top) (apply #(hiccup/html %&) top))
-       (when (seq html) (apply #(hiccup/html %&) html))
-       (when (seq css) (css-tag (apply str css)))
+       (when (seq top)
+         (apply #(hiccup/html %&) top))
+
+       (when (seq html)
+         (apply #(hiccup/html %&) html))
+
+       (when (seq css)
+         (css-tag (apply str css)))
+
        ;; TODO fix ugly interposing ;
-       (when (seq js) (javascript-tag (apply str (interpose ";" js))))
-       (when (seq dom) (javascript-tag (scriptjure/js ($ (fn [] (quote (clj (apply str (interpose ";" dom)))))))))]])))
+       (when (seq js)
+         (javascript-tag (apply str (interpose ";" js))))
+
+       (when (seq dom)
+         (javascript-tag
+          (scriptjure/js ($ (fn [] (quote (clj (apply str (interpose ";" dom)))))))))]])))
+
 
 (defn render
   "Render slices to html"

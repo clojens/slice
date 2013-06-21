@@ -92,7 +92,7 @@
 (slice grid-test
   agrid
   ;; global-reset
-  (html 
+  (html
    ["div.container"
         [(dot "div" (agrid 6) (agrid 3 :push))
          "logo"]
